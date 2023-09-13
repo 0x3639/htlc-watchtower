@@ -1,0 +1,70 @@
+name: Build and release HTLC Watchtower
+
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install zip utility
+        run: |
+          sudo apt update
+          sudo apt install -y zip
+
+      - name: Setup dart
+        uses: dart-lang/setup-dart@v1
+        with:
+            sdk: 3.1.0
+
+      - name: Install dependencies
+        run: dart pub get
+        
+      - name: Run build runner
+        run: dart run build_runner build
+        
+      - name: Compile
+        run: |
+            mkdir build
+            dart compile exe src/main.dart -o build/htlc-watchtower
+          
+      - name: Add execute flag
+        run: |
+          chmod +x build/*
+          
+      - name: Copy config file
+        run: |
+            cp example.config.yaml build/example.config.yaml
+          
+      - name: Archive files
+        run: |
+          cd build
+          zip htlc-watchtower-linux-amd64.zip htlc-watchtower example.config.yaml
+          rm htlc-watchtower
+          rm example.config.yaml
+          
+      - name: Generate checksums
+        run: |
+          cd build
+          echo $(sha256sum *)
+          echo $(sha256sum *) >> SHA256CHECKSUMS.txt
+          
+      - name: Set version
+        run: |
+          echo "WATCHTOWER_VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
+          
+      - name: Upload files to a GitHub release
+        uses: svenstaro/upload-release-action@2.5.0
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: build/*
+          release_name: ${{ env.WATCHTOWER_VERSION }}
+          prerelease: ${{ contains(env.WATCHTOWER_VERSION, '-') }}
+          tag: ${{ env.WATCHTOWER_VERSION }}
+          file_glob: true
+          overwrite: true
+          body: ""
